@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../firebaseConfig'; // Adjust path as needed
+import { useCalculationStorage } from '../../hooks/useCalculationStorage';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
 import ThemedCard from '../../components/ThemedCard';
@@ -30,11 +31,22 @@ const GradePointHistory = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('newest');
+  const [clearingAll, setClearingAll] = useState(false);
 
   const router = useRouter();
+  const { clearLocalStorage } = useCalculationStorage();
+  
+  // Ref to store the unsubscribe function
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
-    loadHistory();
+    const unsubscribe = loadHistory();
+    unsubscribeRef.current = unsubscribe;
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -63,6 +75,7 @@ const GradePointHistory = () => {
             timestamp: data.timestamp?.toDate() || new Date()
           });
         });
+        console.log(`Firebase listener received ${calculations.length} calculations`);
         setHistoryData(calculations);
         setLoading(false);
       },
@@ -223,6 +236,11 @@ const GradePointHistory = () => {
               });
               
               await batch.commit();
+              
+              // Manually update local state to immediately reflect changes
+              const updatedHistory = historyData.filter(item => !selectedItems.has(item.id));
+              setHistoryData(updatedHistory);
+              
               clearSelection();
             } catch (error) {
               console.error('Error deleting calculations:', error);
@@ -245,19 +263,52 @@ const GradePointHistory = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setClearingAll(true);
+              
+              if (!auth.currentUser) {
+                Alert.alert('Error', 'You must be logged in to clear history');
+                return;
+              }
+
               const userId = auth.currentUser.uid;
               const batch = writeBatch(db);
               
+              // Delete all items from Firebase
+              console.log(`Deleting ${historyData.length} calculations from Firebase`);
               historyData.forEach(item => {
                 const docRef = doc(db, 'users', userId, 'calculations', item.id);
                 batch.delete(docRef);
               });
               
               await batch.commit();
+              console.log('Firebase batch delete completed');
+              
+              // Clear local storage as well
+              await clearLocalStorage();
+              console.log('Local storage cleared');
+              
+              // Manually update local state to immediately reflect changes
+              setHistoryData([]);
+              setFilteredData([]);
+              console.log('Local state updated to empty arrays');
+              
               clearSelection();
+              
+              Alert.alert(
+                'Success', 
+                'All calculation history has been cleared from both local and cloud storage.',
+                [{ text: 'OK' }]
+              );
+              
             } catch (error) {
               console.error('Error clearing all history:', error);
-              Alert.alert('Error', 'Failed to clear history');
+              Alert.alert(
+                'Error', 
+                'Failed to clear all history. Please try again.',
+                [{ text: 'OK' }]
+              );
+            } finally {
+              setClearingAll(false);
             }
           }
         }
@@ -327,7 +378,7 @@ const GradePointHistory = () => {
               color={item.targetAchievable ? '#10B981' : '#F59E0B'}
             />
             <ThemedText style={[styles.statusText, { color: item.targetAchievable ? '#10B981' : '#F59E0B' }]}>
-              {item.targetAchievable ? 'Target Achievable' : 'Needs Improvement'}
+              {item.targetAchievable ? 'Good Performance Possible' : 'Limited Improvement Range'}
             </ThemedText>
           </View>
           <ThemedText style={styles.timestamp}>{formatDate(item.timestamp)}</ThemedText>
@@ -452,9 +503,22 @@ const GradePointHistory = () => {
       {/* Clear All Button */}
       {!isSelectionMode && filteredData.length > 0 && (
         <View style={styles.footer}>
-          <Pressable onPress={clearAllHistory} style={styles.clearAllButton}>
-            <Ionicons name="trash-outline" size={18} color="#EF4444" />
-            <Text style={styles.clearAllText}>Clear All History</Text>
+          <Pressable 
+            onPress={clearAllHistory} 
+            style={[styles.clearAllButton, clearingAll && styles.disabledButton]}
+            disabled={clearingAll}
+          >
+            {clearingAll ? (
+              <>
+                <ActivityIndicator size="small" color="#EF4444" />
+                <Text style={styles.clearAllText}>Clearing...</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                <Text style={styles.clearAllText}>Clear All History</Text>
+              </>
+            )}
           </Pressable>
         </View>
       )}
@@ -688,6 +752,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     backgroundColor: '#FEF2F2',
+  },
+  disabledButton: {
+    opacity: 0.6,
+    backgroundColor: '#F3F4F6',
   },
   clearAllText: {
     color: '#EF4444',

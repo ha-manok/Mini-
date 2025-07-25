@@ -9,6 +9,7 @@ import ThemedButton from '../../components/ThemedButton'
 import { Ionicons } from '@expo/vector-icons'
 import { instructions } from '../../constants/instructions'
 import ResultsDisplay from '../../components/Results'
+import { useCalculationStorage } from '../../hooks/useCalculationStorage'
 
 const calculator = () => {
 
@@ -21,6 +22,9 @@ const calculator = () => {
   const [semesterCredit, setSemestercredit] = useState('');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  
+  // Initialize the storage hook
+  const { saveCalculation, loading: saveLoading, error: saveError } = useCalculationStorage();
 
   const generateProjectedCwa = (stch, pcwa, ptch) => {
     const results = [];
@@ -51,8 +55,59 @@ const calculator = () => {
 
   const handleBack = () => setShowResults(false);
 
-  const handleSaveToHistory = () => {
-    Alert.alert('Saved', 'Projections saved to history!');
+  const handleSaveToHistory = async () => {
+    try {
+      const currentCwaNum = parseFloat(currentCwa);
+      const previousCreditNum = parseFloat(previousCredit);
+      const semesterCreditNum = parseFloat(semesterCredit);
+      
+      // Calculate highest and lowest possible CWA
+      const highestCwa = Math.max(...results.map(r => r.projectedCwa));
+      const lowestCwa = Math.min(...results.map(r => r.projectedCwa));
+      
+      // Determine if target is achievable (more realistic assessment)
+      // If user can achieve at least 70% or improve by more than 5 points, it's achievable
+      const targetAchievable = highestCwa >= 70 || (highestCwa - currentCwaNum) >= 5;
+      
+      // Prepare the calculation data to save
+      const calculationData = {
+        currentCwa: currentCwaNum,
+        previousCredit: previousCreditNum,
+        semesterCredit: semesterCreditNum,
+        targetAchievable: targetAchievable,
+        // Save a subset of results for storage efficiency (top 10 and specific ranges)
+        resultsSummary: {
+          totalProjections: results.length,
+          sampleResults: results.filter((_, index) => index % 1000 === 0).slice(0, 10), // Every 1000th result, max 10
+          highestCwa: highestCwa,
+          lowestCwa: lowestCwa
+        },
+        calculationType: 'cwa_projection'
+      };
+
+      const result = await saveCalculation(calculationData);
+      
+      if (result.success) {
+        Alert.alert(
+          'Success!', 
+          'Your calculation has been saved to both local storage and cloud backup.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Save Failed', 
+          result.error || 'Failed to save calculation. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error in handleSaveToHistory:', error);
+      Alert.alert(
+        'Error', 
+        'An unexpected error occurred while saving.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   if (showResults) {
@@ -65,6 +120,8 @@ const calculator = () => {
         onBack={handleBack}
         onSaveToHistory={handleSaveToHistory}
         isProjectionMode={true}
+        saveLoading={saveLoading}
+        saveError={saveError}
       />
     );
   }

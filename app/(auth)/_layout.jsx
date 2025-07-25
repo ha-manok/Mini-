@@ -1,9 +1,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import AuthGuard from '../../components/AuthGuard';
 
 export default function AuthLayout() {
   return (
-    <>
+    <AuthGuard requireAuth={false}>
       <StatusBar style="auto" />
       <Stack
         screenOptions={{
@@ -11,6 +12,6 @@ export default function AuthLayout() {
           headerShown:false,
         }}
       />
-    </>
+    </AuthGuard>
   );
 }

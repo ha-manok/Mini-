@@ -2,13 +2,18 @@ import { StyleSheet, Text, View, Image, Animated } from 'react-native'
 import React, { useEffect, useRef } from 'react'
 import Spacer from '../components/Spacer'
 import { useRouter } from 'expo-router'
+import { useAuthState } from '../hooks/useAuthState'
 
 const Splash = () => {
   const router = useRouter()
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
+  const { isAuthenticated, isLoading } = useAuthState()
 
   useEffect(() => {
+    // Don't start navigation timer until auth state is determined
+    if (isLoading) return
+
     // Fade-in sequence
     const fadeIn = () => {
       Animated.parallel([
@@ -25,7 +30,7 @@ const Splash = () => {
       ]).start()
     }
 
-    // Fade-out sequence
+    // Fade-out sequence and navigation
     const fadeOut = () => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -39,7 +44,12 @@ const Splash = () => {
           useNativeDriver: true,
         })
       ]).start(() => {
-        router.replace('/(dashboard)')
+        // Navigate based on authentication status
+        if (isAuthenticated) {
+          router.replace('/(dashboard)')
+        } else {
+          router.replace('/(auth)/login')
+        }
       })
     }
 
@@ -50,7 +60,7 @@ const Splash = () => {
     const timer = setTimeout(fadeOut, 2500)
 
     return () => clearTimeout(timer)
-  }, [router, fadeAnim, scaleAnim])
+  }, [router, fadeAnim, scaleAnim, isAuthenticated, isLoading])
 
   return (
     <View style={styles.container}>

@@ -51,7 +51,7 @@ const Register = () => {
       // Correct parameter order: name, email, password
       await register(name, email, password);
       Alert.alert('Success', 'Account created! ');
-      router.push('/dashboard');
+      router.replace('/(dashboard)');
     } catch (error) {
       Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
       console.error('Registration error:', error);

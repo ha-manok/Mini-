@@ -1,5 +1,5 @@
 import { StyleSheet, Pressable, Text, View, TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
 import Spacer from '../../components/Spacer';
@@ -17,11 +17,14 @@ const Login = () => {
   const { login } = useUser();
   const { promptAsync, loading: googleLoading } = useGoogleLogin(); // from custom hook
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async () => {
     try {
       setLoading(true);
       await login(email, password);
+      // Redirect to dashboard on successful login
+      router.replace('/(dashboard)');
     } catch (error) {
       Alert.alert("Login failed", error.message);
     } finally {

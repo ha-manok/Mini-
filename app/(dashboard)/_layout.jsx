@@ -6,12 +6,46 @@ import { useRouter } from "expo-router";
 import ThemedCard from "../../components/ThemedCard";
 import ThemedText from "../../components/ThemedText";
 import ThemedButton from "../../components/ThemedButton";
+import { useAuthState } from "../../hooks/useAuthState";
 
 const router = useRouter();
 
 const DashboardLayout = () => {
     const colorScheme = useColorScheme()
     const theme = colors[colorScheme] ?? colors.light
+    const { isAuthenticated, user } = useAuthState()
+
+    const renderHeaderRight = () => {
+        if (isAuthenticated) {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}>
+                    <ThemedText style={{ fontSize: 16, fontWeight: '500' }}>
+                        Hi, {user?.displayName?.split(' ')[0] || 'User'}
+                    </ThemedText>
+                </View>
+            )
+        } else {
+            return (
+                <ThemedButton
+                    onPress={() => router.push("/(auth)/login")}
+                    useGradient={false}
+                    style={{ 
+                        backgroundColor: 'transparent', 
+                        borderWidth: 1, 
+                        borderColor: '#ccc',
+                        borderRadius: 5,
+                        paddingVertical: 10,
+                        paddingHorizontal: 10,
+                        marginRight: 10,
+                    }}
+                >
+                    <ThemedText>
+                        Login
+                    </ThemedText>
+                </ThemedButton>
+            )
+        }
+    }
     
     return (
         <>
@@ -43,24 +77,7 @@ const DashboardLayout = () => {
                     options={{
                         tabBarLabel: "Home", 
                         headerTitle: "GradePoint",
-                        headerRight: () => (
-                            <ThemedButton
-                                onPress={()=> router.push("/login")}
-                                useGradient={false}
-                                style={{ backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ccc' , 
-                                    borderRadius:5,paddingVertical:10,
-                                    paddingHorizontal:10,marginRight:10,
-                
-                                }}
-                            >
-                                <ThemedText>
-                                    Login
-                                </ThemedText>
-                               
-                            </ThemedButton>
-
-                            
-                        ),
+                        headerRight: renderHeaderRight,
                         tabBarIcon: ({focused}) => (
                             <Ionicons size={24} name="home-outline" color={focused ? theme.iconColorFocused : theme.iconColor} />
                         )
