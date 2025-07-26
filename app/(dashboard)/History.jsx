@@ -1,25 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
-  ScrollView,
-  Text,
-  Pressable,
   Alert,
   FlatList,
   RefreshControl,
-  Share,
-  ActivityIndicator
+  Share
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { db, auth } from '../../firebaseConfig'; // Adjust path as needed
+import { collection, query, orderBy, onSnapshot, doc, writeBatch, getDocs } from 'firebase/firestore';
+import { db, auth } from '../../firebaseConfig';
+import { useCalculationStorage } from '../../hooks/useCalculationStorage';
 import ThemedView from '../../components/ThemedView';
-import ThemedText from '../../components/ThemedText';
-import ThemedCard from '../../components/ThemedCard';
-import ThemedTextInput from '../../components/ThemedTextInput';
-import Spacer from '../../components/Spacer';
+import CalculationCard from '../../components/CalculationCard';
+import HistoryHeader from '../../components/HistoryHeader';
+import EmptyState from '../../components/EmptyState';
+import SearchBar from '../../components/SearchBar';
+import SelectionActions from '../../components/SelectionActions';
+import ClearAllButton from '../../components/ClearAllButton';
 
 const GradePointHistory = () => {
   const [historyData, setHistoryData] = useState([]);
@@ -30,11 +28,22 @@ const GradePointHistory = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('newest');
+  const [clearingAll, setClearingAll] = useState(false);
 
   const router = useRouter();
+  const { clearLocalStorage } = useCalculationStorage();
+  
+  // Ref to store the unsubscribe function
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
-    loadHistory();
+    const unsubscribe = loadHistory();
+    unsubscribeRef.current = unsubscribe;
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -63,6 +72,7 @@ const GradePointHistory = () => {
             timestamp: data.timestamp?.toDate() || new Date()
           });
         });
+        console.log(`Firebase listener received ${calculations.length} calculations`);
         setHistoryData(calculations);
         setLoading(false);
       },
@@ -223,6 +233,11 @@ const GradePointHistory = () => {
               });
               
               await batch.commit();
+              
+              // Manually update local state to immediately reflect changes
+              const updatedHistory = historyData.filter(item => !selectedItems.has(item.id));
+              setHistoryData(updatedHistory);
+              
               clearSelection();
             } catch (error) {
               console.error('Error deleting calculations:', error);
@@ -245,19 +260,60 @@ const GradePointHistory = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setClearingAll(true);
+              
+              if (!auth.currentUser) {
+                Alert.alert('Error', 'You must be logged in to clear history');
+                return;
+              }
+
               const userId = auth.currentUser.uid;
-              const batch = writeBatch(db);
               
-              historyData.forEach(item => {
-                const docRef = doc(db, 'users', userId, 'calculations', item.id);
-                batch.delete(docRef);
-              });
+              // Query ALL calculations from Firebase to ensure nothing is missed
+              const calculationsRef = collection(db, 'users', userId, 'calculations');
+              const snapshot = await getDocs(calculationsRef);
               
-              await batch.commit();
+              console.log(`Found ${snapshot.size} calculations in Firebase to delete`);
+              
+              if (snapshot.size === 0) {
+                console.log('No calculations found in Firebase');
+              } else {
+                // Delete all items from Firebase using batch
+                const batch = writeBatch(db);
+                
+                snapshot.forEach((docSnapshot) => {
+                  batch.delete(docSnapshot.ref);
+                });
+                
+                await batch.commit();
+                console.log(`Firebase batch delete completed - deleted ${snapshot.size} calculations`);
+              }
+              
+              // Clear local storage as well
+              await clearLocalStorage();
+              console.log('Local storage cleared');
+              
+              // Note: Real-time listener will automatically update historyData
+              // when documents are deleted from Firebase
+              console.log('Waiting for real-time listener to update...');
+              
               clearSelection();
+              
+              Alert.alert(
+                'Success', 
+                'All calculation history has been cleared from both local and cloud storage.',
+                [{ text: 'OK' }]
+              );
+              
             } catch (error) {
               console.error('Error clearing all history:', error);
-              Alert.alert('Error', 'Failed to clear history');
+              Alert.alert(
+                'Error', 
+                'Failed to clear all history. Please try again.',
+                [{ text: 'OK' }]
+              );
+            } finally {
+              setClearingAll(false);
             }
           }
         }
@@ -266,91 +322,29 @@ const GradePointHistory = () => {
   };
 
   const renderHistoryItem = ({ item }) => (
-    <Pressable
-      onPress={() => handleItemPress(item)}
-      onLongPress={() => handleItemLongPress(item)}
-      style={[
-        styles.historyItem,
-        isSelectionMode && selectedItems.has(item.id) && styles.selectedItem
-      ]}
-    >
-      <ThemedCard style={styles.calculationCard}>
-        <View style={styles.cardHeader}>
-          <View style={styles.calculationInfo}>
-            <View style={styles.cwaContainer}>
-              <ThemedText style={styles.cwaLabel}>Current CWA</ThemedText>
-              <ThemedText style={styles.cwaValue}>{item.currentCwa}</ThemedText>
-            </View>
-            <View style={styles.projectionContainer}>
-              <ThemedText style={styles.projectionLabel}>Best Projection</ThemedText>
-              <ThemedText style={[styles.projectionValue, { color: item.targetAchievable ? '#10B981' : '#EF4444' }]}>
-                {item.bestProjection}
-              </ThemedText>
-            </View>
-          </View>
-          {isSelectionMode && (
-            <Ionicons
-              name={selectedItems.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-              size={24}
-              color={selectedItems.has(item.id) ? '#2E5CFF' : '#9CA3AF'}
-            />
-          )}
-        </View>
-
-        <Spacer height={12} />
-
-        <View style={styles.creditsRow}>
-          <View style={styles.creditItem}>
-            <ThemedText style={styles.creditLabel}>Previous Credits</ThemedText>
-            <ThemedText style={styles.creditValue}>{item.previousCredit}</ThemedText>
-          </View>
-          <View style={styles.creditItem}>
-            <ThemedText style={styles.creditLabel}>Semester Credits</ThemedText>
-            <ThemedText style={styles.creditValue}>{item.semesterCredit}</ThemedText>
-          </View>
-        </View>
-
-        <Spacer height={8} />
-
-        {item.notes && (
-          <View style={styles.notesContainer}>
-            <Ionicons name="document-text-outline" size={14} color="#6B7280" />
-            <ThemedText style={styles.notesText}>{item.notes}</ThemedText>
-          </View>
-        )}
-
-        <View style={styles.cardFooter}>
-          <View style={styles.statusContainer}>
-            <Ionicons
-              name={item.targetAchievable ? 'checkmark-circle' : 'alert-circle'}
-              size={16}
-              color={item.targetAchievable ? '#10B981' : '#F59E0B'}
-            />
-            <ThemedText style={[styles.statusText, { color: item.targetAchievable ? '#10B981' : '#F59E0B' }]}>
-              {item.targetAchievable ? 'Target Achievable' : 'Needs Improvement'}
-            </ThemedText>
-          </View>
-          <ThemedText style={styles.timestamp}>{formatDate(item.timestamp)}</ThemedText>
-        </View>
-      </ThemedCard>
-    </Pressable>
+    <CalculationCard
+      item={item}
+      isSelectionMode={isSelectionMode}
+      isSelected={selectedItems.has(item.id)}
+      onPress={handleItemPress}
+      onLongPress={handleItemLongPress}
+      formatDate={formatDate}
+    />
   );
 
   // Show loading spinner while fetching data
   if (loading) {
     return (
       <ThemedView safe={true} style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#2E5CFF" />
-          </Pressable>
-          <ThemedText style={styles.headerTitle}>Calculation History</ThemedText>
-          <View style={styles.headerButton} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2E5CFF" />
-          <ThemedText style={styles.loadingText}>Loading calculations...</ThemedText>
-        </View>
+        <HistoryHeader
+          isSelectionMode={false}
+          selectedCount={0}
+          sortOrder={sortOrder}
+          onBack={() => router.back()}
+          onClearSelection={clearSelection}
+          onToggleSort={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+        />
+        <EmptyState type="loading" />
       </ThemedView>
     );
   }
@@ -359,28 +353,18 @@ const GradePointHistory = () => {
   if (historyData.length === 0) {
     return (
       <ThemedView safe={true} style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#2E5CFF" />
-          </Pressable>
-          <ThemedText style={styles.headerTitle}>Calculation History</ThemedText>
-          <View style={styles.headerButton} />
-        </View>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="calculator-outline" size={64} color="#9CA3AF" />
-          <ThemedText style={styles.emptyTitle}>No Calculations Yet</ThemedText>
-          <ThemedText style={styles.emptySubtitle}>
-            Your GradePoint calculations will appear here
-          </ThemedText>
-          <Spacer height={20} />
-          <Pressable
-            onPress={() => router.push('/Calc')}
-            style={styles.calculatorButton}
-          >
-            <Ionicons name="calculator" size={20} color="#fff" />
-            <Text style={styles.calculatorButtonText}>Start Calculating</Text>
-          </Pressable>
-        </View>
+        <HistoryHeader
+          isSelectionMode={false}
+          selectedCount={0}
+          sortOrder={sortOrder}
+          onBack={() => router.back()}
+          onClearSelection={clearSelection}
+          onToggleSort={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+        />
+        <EmptyState 
+          type={!auth.currentUser ? "no-data" : "no-data"}
+          onStartCalculating={() => router.push('/Calc')} 
+        />
       </ThemedView>
     );
   }
@@ -388,45 +372,27 @@ const GradePointHistory = () => {
   return (
     <ThemedView safe={true} style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#2E5CFF" />
-        </Pressable>
-        <ThemedText style={styles.headerTitle}>
-          {isSelectionMode ? `${selectedItems.size} Selected` : 'Calculation History'}
-        </ThemedText>
-        {isSelectionMode ? (
-          <Pressable onPress={clearSelection} style={styles.headerButton}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
-        ) : (
-          <Pressable onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')} style={styles.headerButton}>
-            <Ionicons name="swap-vertical" size={20} color="#2E5CFF" />
-          </Pressable>
-        )}
-      </View>
+      <HistoryHeader
+        isSelectionMode={isSelectionMode}
+        selectedCount={selectedItems.size}
+        sortOrder={sortOrder}
+        onBack={() => router.back()}
+        onClearSelection={clearSelection}
+        onToggleSort={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+      />
 
       {/* Search Bar */}
       {!isSelectionMode && (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
-          <ThemedTextInput
-            placeholder="Search calculations..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.searchInput}
-          />
-        </View>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search calculations..."
+        />
       )}
 
       {/* Selection Actions */}
       {isSelectionMode && (
-        <View style={styles.selectionActions}>
-          <Pressable onPress={deleteSelected} style={styles.actionButton}>
-            <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            <Text style={[styles.actionText, { color: '#EF4444' }]}>Delete</Text>
-          </Pressable>
-        </View>
+        <SelectionActions onDelete={deleteSelected} />
       )}
 
       {/* History List */}
@@ -440,24 +406,15 @@ const GradePointHistory = () => {
           showsVerticalScrollIndicator={false}
         />
       ) : searchQuery.trim() ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="search-outline" size={64} color="#9CA3AF" />
-          <ThemedText style={styles.emptyTitle}>No Results Found</ThemedText>
-          <ThemedText style={styles.emptySubtitle}>
-            Try adjusting your search terms
-          </ThemedText>
-        </View>
+        <EmptyState type="no-results" />
       ) : null}
 
       {/* Clear All Button */}
-      {!isSelectionMode && filteredData.length > 0 && (
-        <View style={styles.footer}>
-          <Pressable onPress={clearAllHistory} style={styles.clearAllButton}>
-            <Ionicons name="trash-outline" size={18} color="#EF4444" />
-            <Text style={styles.clearAllText}>Clear All History</Text>
-          </Pressable>
-        </View>
-      )}
+      <ClearAllButton
+        onClearAll={clearAllHistory}
+        isClearing={clearingAll}
+        isVisible={!isSelectionMode && filteredData.length > 0}
+      />
     </ThemedView>
   );
 };
@@ -469,230 +426,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  headerButton: {
-    padding: 8,
-  },
-  cancelText: {
-    color: '#2E5CFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 16,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  selectionActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-  },
-  actionText: {
-    marginLeft: 6,
-    fontSize: 14,
-    fontWeight: '500',
-  },
   listContainer: {
     padding: 16,
-  },
-  historyItem: {
-    marginBottom: 12,
-  },
-  selectedItem: {
-    opacity: 0.8,
-  },
-  calculationCard: {
-    borderRadius: 12,
-    padding: 16,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  calculationInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  cwaContainer: {
-    alignItems: 'flex-start',
-  },
-  cwaLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  cwaValue: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  projectionContainer: {
-    alignItems: 'flex-end',
-  },
-  projectionLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  projectionValue: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  creditsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  creditItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  creditLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  creditValue: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#4B5563',
-  },
-  notesContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  notesText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#6B7280',
-    flex: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusText: {
-    marginLeft: 4,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  timestamp: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginTop: 16,
-  },
-  calculatorButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2E5CFF',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  calculatorButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  footer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  clearAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#FEF2F2',
-  },
-  clearAllText: {
-    color: '#EF4444',
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 6,
   },
 });

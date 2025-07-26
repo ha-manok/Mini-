@@ -7,9 +7,11 @@ import Spacer from '../../components/Spacer';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { useUser } from '../../hooks/useUser';
+import { useAuthState } from '../../hooks/useAuthState';
 
 const Settings = () => {
-  const { user, logout } = useUser();
+  const { logout } = useUser();
+  const { user, isAuthenticated } = useAuthState();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const handleSignOut = () => {
@@ -24,9 +26,10 @@ const Settings = () => {
           onPress: async () => {
             try {
               await logout();
-              router.replace('/login');
+              // Stay on dashboard after logout - user can still use calculator
+              Alert.alert('Success', 'You have been signed out. You can still use the calculator, but calculations won\'t be saved.');
             } catch (error) {
-              Alert.alert('Error', 'Failed to sign out');
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },
         },
@@ -37,29 +40,55 @@ const Settings = () => {
   return (
     <ThemedView safe={true} style={styles.container}>
       {/* Profile Card */}
-      <ThemedCard style={styles.profileCard}>
-        <View style={styles.outerCircle}>
-          <View style={styles.innerCircle}>
-            <Ionicons name="person" size={30} color={'#E5E7EB'} style={styles.icon} />
-          </View>  
-        </View>
-        <View style={styles.profileInfo}>
-          <ThemedText title style={styles.userName}>
-            {user?.name || 'User Name'}
-          </ThemedText>
-          <View style={styles.emailRow}>
-            <ThemedText style={styles.emailText}>
-              {user?.email || 'user@example.com'}
-            </ThemedText>
-            <Pressable 
-              onPress={() => router.push('/edit')} 
-              style={({ pressed }) => [pressed && styles.pressed]}
-            >
-              <Text style={styles.editButton}>Edit</Text>
-            </Pressable>
+      {isAuthenticated ? (
+        <ThemedCard style={styles.profileCard}>
+          <View style={styles.outerCircle}>
+            <View style={styles.innerCircle}>
+              <Ionicons name="person" size={30} color={'#E5E7EB'} style={styles.icon} />
+            </View>  
           </View>
-        </View>
-      </ThemedCard>
+          <View style={styles.profileInfo}>
+            <ThemedText title style={styles.userName}>
+              {user?.displayName || user?.name || 'User Name'}
+            </ThemedText>
+            <View style={styles.emailRow}>
+              <ThemedText style={styles.emailText}>
+                {user?.email || 'user@example.com'}
+              </ThemedText>
+              <Pressable 
+                onPress={() => router.push('/edit')} 
+                style={({ pressed }) => [pressed && styles.pressed]}
+              >
+                <Text style={styles.editButton}>Edit</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ThemedCard>
+      ) : (
+        <ThemedCard style={styles.profileCard}>
+          <View style={styles.outerCircle}>
+            <View style={styles.innerCircle}>
+              <Ionicons name="person-outline" size={30} color={'#9CA3AF'} style={styles.icon} />
+            </View>  
+          </View>
+          <View style={styles.profileInfo}>
+            <ThemedText title style={styles.userName}>
+              Guest User
+            </ThemedText>
+            <View style={styles.emailRow}>
+              <ThemedText style={styles.emailText}>
+                You're using GradePoint as a guest
+              </ThemedText>
+              <Pressable 
+                onPress={() => router.push("/(auth)/login")} 
+                style={({ pressed }) => [pressed && styles.pressed]}
+              >
+                <Text style={styles.editButton}>Login</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ThemedCard>
+      )}
 
       {/* App Preferences Card */}
       <ThemedCard style={styles.preferenceCard}>
@@ -121,15 +150,18 @@ const Settings = () => {
         
         <Spacer height={20} />
         
-        {/* Sign Out Button */}
-        <Pressable 
-          onPress={handleSignOut}
-          style={({ pressed }) => [pressed && styles.pressed]}
-        >
-          <View style={styles.signOutContainer}>
-            <ThemedText title style={styles.signOutText}>Sign Out</ThemedText>
-          </View>
-        </Pressable>
+        {/* Sign Out Button - Only show if authenticated */}
+        {isAuthenticated && (
+          <Pressable 
+            onPress={handleSignOut}
+            style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+          >
+            <View style={styles.signOutContainer}>
+              <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+              <ThemedText title style={styles.signOutText}>Sign Out</ThemedText>
+            </View>
+          </Pressable>
+        )}
       </ThemedCard>
     </ThemedView>
   );
@@ -247,8 +279,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.3,
     borderColor: '#F3F4F6',
   },
+  signOutButton: {
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
   signOutContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 15,
   },
   signOutText: {

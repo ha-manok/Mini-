@@ -20,7 +20,6 @@ const RootLayout = () => {
     <>
       <StatusBar style="auto" />
       <Stack
-        initialRouteName="Splash"
         screenOptions={{
           headerStyle: {
             backgroundColor: theme.navBackground,
@@ -33,7 +32,7 @@ const RootLayout = () => {
           headerTitleStyle: {
             fontWeight: 'bold',
             fontSize: 20,
-            fontFamily: 'Inter_400Regular', // ✅ fixed font family name
+            fontFamily: 'Inter_400Regular', // fixed font family name
             color: colors.title,
           },
         }}

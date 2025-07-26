@@ -6,7 +6,7 @@ export const instructions =  {
             'Enter Cumulative Weighted Average accurately',
             'Double-check your course grades before submitting'
         ],
-        icon: require ('../assets/images/FRAME (2).png')
+        icon: require ('../assets/images/FRAME2.png')
     },
     calcTips:{
         title:' How it works',
@@ -25,7 +25,7 @@ export const instructions =  {
         ],
     },
     carouselData:[
-        require('../assets/images/gradient 2.png'),
-        require('../assets/images/gradient 3.png'),
+        require('../assets/images/FRAME2.png'),
+        require('../assets/images/FRAME2.png'),
     ]
 }

@@ -1,5 +1,7 @@
-import { View, FlatList, Text, StyleSheet, Keyboard,TouchableWithoutFeedback } from 'react-native';
+import { View, FlatList, Text, StyleSheet, Keyboard, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthState } from '../hooks/useAuthState';
 import ThemedView from './ThemedView';
 import ThemedText from './ThemedText';
 import ThemedButton from './ThemedButton';
@@ -15,7 +17,10 @@ const ResultsDisplay = ({
   onBack,
   onSaveToHistory,
   isProjectionMode = false,
+  saveLoading = false,
+  saveError = null,
 }) => {
+    const { isAuthenticated } = useAuthState();
 
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -159,13 +164,46 @@ const ResultsDisplay = ({
 
                 <Spacer height={15}/>
                 <View style={styles.actionButtons}>
-                    <ThemedButton onPress={onSaveToHistory} style={{ borderRadius: 8 }}>
-                        Save to History
+                    <ThemedButton 
+                        onPress={onSaveToHistory} 
+                        style={{ borderRadius: 8 }}
+                        disabled={saveLoading || !isAuthenticated}
+                    >
+                        {saveLoading ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="small" color="#fff" />
+                                <Text style={styles.loadingText}>Saving...</Text>
+                            </View>
+                        ) : (
+                            <Text style={styles.buttonText}>
+                                {isAuthenticated ? 'Save to History' : 'Login to Save'}
+                            </Text>
+                        )}
                     </ThemedButton>
                     <ThemedButton style={{ borderRadius: 8 }} onPress={onBack} variant="secondary">
-                        Calculate Again
+                        <Text style={styles.buttonText}>Calculate Again</Text>
                     </ThemedButton>
                 </View>
+                
+                {!isAuthenticated && (
+                    <ThemedCard style={styles.guestModeNotice}>
+                        <View style={styles.guestModeContent}>
+                            <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
+                            <ThemedText style={styles.guestModeText}>
+                                Log in to save your calculations and view history
+                            </ThemedText>
+                        </View>
+                    </ThemedCard>
+                )}
+                
+                {/* Show error message if save failed */}
+                {saveError && (
+                    <ThemedCard style={styles.errorContainer}>
+                        <ThemedText style={styles.errorText}>
+                            ⚠️ Save Error: {saveError}
+                        </ThemedText>
+                    </ThemedCard>
+                )}
             </ThemedView>
          </TouchableWithoutFeedback>
         );
@@ -293,6 +331,52 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: 14,
         color: '#666',
+        textAlign: 'center',
+    },
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    loadingText: {
+        color: '#fff',
+        marginLeft: 8,
+        fontSize: 16,
+    },
+    buttonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    errorContainer: {
+        marginTop: 12,
+        padding: 12,
+        backgroundColor: '#FEF2F2',
+        borderColor: '#FCA5A5',
+        borderWidth: 1,
+        borderRadius: 8,
+    },
+    errorText: {
+        color: '#DC2626',
+        fontSize: 14,
+        textAlign: 'center',
+    },
+    guestModeNotice: {
+        marginTop: 12,
+        backgroundColor: '#FEF3C7',
+        borderColor: '#F59E0B',
+        borderWidth: 1,
+    },
+    guestModeContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+    },
+    guestModeText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: '#92400E',
         textAlign: 'center',
     },
 });
