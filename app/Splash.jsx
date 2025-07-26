@@ -44,12 +44,8 @@ const Splash = () => {
           useNativeDriver: true,
         })
       ]).start(() => {
-        // Navigate based on authentication status
-        if (isAuthenticated) {
-          router.replace('/(dashboard)')
-        } else {
-          router.replace('/(auth)/login')
-        }
+        // Always navigate to dashboard - guest mode allowed
+        router.replace('/(dashboard)')
       })
     }
 

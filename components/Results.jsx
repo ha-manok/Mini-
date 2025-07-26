@@ -1,5 +1,7 @@
 import { View, FlatList, Text, StyleSheet, Keyboard, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthState } from '../hooks/useAuthState';
 import ThemedView from './ThemedView';
 import ThemedText from './ThemedText';
 import ThemedButton from './ThemedButton';
@@ -18,6 +20,7 @@ const ResultsDisplay = ({
   saveLoading = false,
   saveError = null,
 }) => {
+    const { isAuthenticated } = useAuthState();
 
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -164,7 +167,7 @@ const ResultsDisplay = ({
                     <ThemedButton 
                         onPress={onSaveToHistory} 
                         style={{ borderRadius: 8 }}
-                        disabled={saveLoading}
+                        disabled={saveLoading || !isAuthenticated}
                     >
                         {saveLoading ? (
                             <View style={styles.loadingContainer}>
@@ -172,13 +175,26 @@ const ResultsDisplay = ({
                                 <Text style={styles.loadingText}>Saving...</Text>
                             </View>
                         ) : (
-                            <Text style={styles.buttonText}>Save to History</Text>
+                            <Text style={styles.buttonText}>
+                                {isAuthenticated ? 'Save to History' : 'Login to Save'}
+                            </Text>
                         )}
                     </ThemedButton>
                     <ThemedButton style={{ borderRadius: 8 }} onPress={onBack} variant="secondary">
                         <Text style={styles.buttonText}>Calculate Again</Text>
                     </ThemedButton>
                 </View>
+                
+                {!isAuthenticated && (
+                    <ThemedCard style={styles.guestModeNotice}>
+                        <View style={styles.guestModeContent}>
+                            <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
+                            <ThemedText style={styles.guestModeText}>
+                                Log in to save your calculations and view history
+                            </ThemedText>
+                        </View>
+                    </ThemedCard>
+                )}
                 
                 {/* Show error message if save failed */}
                 {saveError && (
@@ -343,6 +359,24 @@ const styles = StyleSheet.create({
     errorText: {
         color: '#DC2626',
         fontSize: 14,
+        textAlign: 'center',
+    },
+    guestModeNotice: {
+        marginTop: 12,
+        backgroundColor: '#FEF3C7',
+        borderColor: '#F59E0B',
+        borderWidth: 1,
+    },
+    guestModeContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+    },
+    guestModeText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: '#92400E',
         textAlign: 'center',
     },
 });
